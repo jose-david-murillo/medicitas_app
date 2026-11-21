@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../core/theme/app_theme.dart';
 import '../data/mock_data.dart';
+import '../database/db_helper.dart';
 import '../models/models.dart';
+import '../services/notification_service.dart';
 import '../widgets/responsive_content.dart';
 
 class CitasScreen extends StatefulWidget {
@@ -13,24 +15,59 @@ class CitasScreen extends StatefulWidget {
 class _CitasScreenState extends State<CitasScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tab;
+  List<Cita> _proximas =
+      MockData.citas.where((c) => c.estado == 'Confirmada').toList();
+  List<Cita> _historial =
+      MockData.citas.where((c) => c.estado != 'Confirmada').toList();
+  bool _cargando = false;
 
   @override
   void initState() {
     super.initState();
     _tab = TabController(length: 2, vsync: this);
+    _cargarCitasDesdeDb();
+  }
+
+  @override
+  void dispose() {
+    _tab.dispose();
+    super.dispose();
+  }
+
+  Future<void> _cargarCitasDesdeDb() async {
+    try {
+      final proximas = await DbHelper.instance.getCitasProximas();
+      final historial = await DbHelper.instance.getCitasHistorial();
+      if (mounted) {
+        setState(() {
+          _proximas = proximas;
+          _historial = historial;
+          _cargando = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error al leer citas desde SQLite: $e');
+      if (mounted) {
+        setState(() => _cargando = false);
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final proximas = MockData.citas
-        .where((c) => c.estado == 'Confirmada')
-        .toList();
-    final historial = MockData.citas
-        .where((c) => c.estado != 'Confirmada')
-        .toList();
     return Scaffold(
       appBar: AppBar(
         title: const Text('Mis citas'),
+        actions: [
+          IconButton(
+            tooltip: 'Actualizar citas',
+            icon: const Icon(Icons.refresh),
+            onPressed: () {
+              setState(() => _cargando = true);
+              _cargarCitasDesdeDb();
+            },
+          ),
+        ],
         bottom: TabBar(
           controller: _tab,
           indicatorColor: Colors.white,
@@ -42,151 +79,165 @@ class _CitasScreenState extends State<CitasScreen>
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tab,
-        children: [
-          _lista(proximas, esProximas: true),
-          _lista(historial, esProximas: false),
-        ],
-      ),
+      body: _cargando
+          ? const Center(child: CircularProgressIndicator())
+          : TabBarView(
+              controller: _tab,
+              children: [
+                _lista(_proximas, esProximas: true),
+                _lista(_historial, esProximas: false),
+              ],
+            ),
     );
   }
 
   Widget _lista(List<Cita> citas, {required bool esProximas}) {
     if (citas.isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(24),
+          padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
+              const Icon(
                 Icons.event_busy_outlined,
                 size: 40,
                 color: AppColors.textLight,
               ),
-              SizedBox(height: 8),
-              Text(
+              const SizedBox(height: 8),
+              const Text(
                 'No hay citas en esta sección',
                 style: TextStyle(color: AppColors.textLight),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: () {
+                  setState(() => _cargando = true);
+                  _cargarCitasDesdeDb();
+                },
+                icon: const Icon(Icons.refresh, size: 16),
+                label: const Text('Recargar'),
               ),
             ],
           ),
         ),
       );
     }
-    return ResponsiveContent(
-      maxWidth: 720,
-      child: ListView.separated(
-        padding: const EdgeInsets.all(16),
-        itemCount: citas.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 12),
-        itemBuilder: (_, i) {
-          final c = citas[i];
-          return Card(
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: c.estado == 'Confirmada'
-                              ? const Color(0xFFE6F5F0)
-                              : Colors.grey.shade200,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          c.estado,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: c.estado == 'Confirmada'
-                                ? AppColors.teal
-                                : Colors.grey.shade700,
-                          ),
-                        ),
-                      ),
-                      const Spacer(),
-                      Text(
-                        c.id,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: AppColors.textLight,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    c.especialidad,
-                    style: const TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                  Text(
-                    '${c.profesional} • ${c.sede}',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textLight,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.calendar_today,
-                        size: 14,
-                        color: AppColors.textLight,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        '${c.fechaHora.day}/${c.fechaHora.month}/2026  ${_fmtHora(c.fechaHora)}',
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                    ],
-                  ),
-                  if (esProximas) ...[
-                    const SizedBox(height: 10),
-                    const Divider(),
+    return RefreshIndicator(
+      onRefresh: _cargarCitasDesdeDb,
+      child: ResponsiveContent(
+        maxWidth: 720,
+        child: ListView.separated(
+          padding: const EdgeInsets.all(16),
+          itemCount: citas.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 12),
+          itemBuilder: (_, i) {
+            final c = citas[i];
+            return Card(
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Row(
                       children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () => _reprogramar(c),
-                            icon: const Icon(Icons.edit_calendar, size: 16),
-                            label: const Text(
-                              'Reprogramar',
-                              style: TextStyle(fontSize: 12),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: c.estado == 'Confirmada'
+                                ? const Color(0xFFE6F5F0)
+                                : Colors.grey.shade200,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            c.estado,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: c.estado == 'Confirmada'
+                                  ? AppColors.teal
+                                  : Colors.grey.shade700,
                             ),
                           ),
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () => _cancelar(c),
-                            icon: const Icon(Icons.cancel_outlined, size: 16),
-                            label: const Text(
-                              'Cancelar',
-                              style: TextStyle(fontSize: 12),
-                            ),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.red,
-                            ),
+                        const Spacer(),
+                        Text(
+                          c.id,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: AppColors.textLight,
                           ),
                         ),
                       ],
                     ),
+                    const SizedBox(height: 8),
+                    Text(
+                      c.especialidad,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    Text(
+                      '${c.profesional} • ${c.sede}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textLight,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.calendar_today,
+                          size: 14,
+                          color: AppColors.textLight,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          '${c.fechaHora.day}/${c.fechaHora.month}/${c.fechaHora.year}  ${_fmtHora(c.fechaHora)}',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ],
+                    ),
+                    if (esProximas) ...[
+                      const SizedBox(height: 10),
+                      const Divider(),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () => _reprogramar(c),
+                              icon: const Icon(Icons.edit_calendar, size: 16),
+                              label: const Text(
+                                'Reprogramar',
+                                style: TextStyle(fontSize: 12),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () => _cancelar(c),
+                              icon: const Icon(Icons.cancel_outlined, size: 16),
+                              label: const Text(
+                                'Cancelar',
+                                style: TextStyle(fontSize: 12),
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.red,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
@@ -198,13 +249,17 @@ class _CitasScreenState extends State<CitasScreen>
     return '$h:$m $ap';
   }
 
+  String _formatearDiaIso(DateTime d) {
+    return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  }
+
   void _cancelar(Cita c) {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Cancelar cita'),
         content: Text(
-          '¿Confirmas cancelar ${c.id}? Se liberará el horario (RF-09).',
+          '¿Confirmas cancelar ${c.id}? Se liberará el horario en la agenda y se actualizará en SQLite (RF-09).',
         ),
         actions: [
           TextButton(
@@ -212,12 +267,38 @@ class _CitasScreenState extends State<CitasScreen>
             child: const Text('No'),
           ),
           ElevatedButton(
-            onPressed: () {
-              setState(() => c.estado = 'Cancelada');
+            onPressed: () async {
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('${c.id} cancelada y horario liberado')),
-              );
+              try {
+                // Liberar el horario de la cita cancelada
+                final diaAnt = _formatearDiaIso(c.fechaHora);
+                final horaAnt = _fmtHora(c.fechaHora);
+                MockData.liberarCupo(diaAnt, horaAnt);
+
+                // Actualizar estado en SQLite (Delete lógico)
+                await DbHelper.instance.updateEstadoCita(c.id, 'Cancelada');
+
+                await _cargarCitasDesdeDb();
+
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        '${c.id} cancelada en SQLite y horario liberado',
+                      ),
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      backgroundColor: Colors.red.shade700,
+                      content: Text('Error al cancelar la cita: $e'),
+                    ),
+                  );
+                }
+              }
             },
             child: const Text('Sí, cancelar'),
           ),
@@ -227,7 +308,6 @@ class _CitasScreenState extends State<CitasScreen>
   }
 
   void _reprogramar(Cita c) {
-    // RF-08: seleccionar nuevo horario
     String nuevoDia = '2026-11-04';
     String nuevaHora = '9:30 a. m.';
     showDialog(
@@ -282,18 +362,60 @@ class _CitasScreenState extends State<CitasScreen>
             child: const Text('Cerrar'),
           ),
           ElevatedButton(
-            onPressed: () {
-              setState(
-                () => c.fechaHora = DateTime.parse(
-                  '$nuevoDia ${_to24(nuevaHora)}',
-                ),
-              );
+            onPressed: () async {
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Cita reprogramada correctamente'),
-                ),
-              );
+              try {
+                // 1. Liberar cupo anterior
+                final diaAnt = _formatearDiaIso(c.fechaHora);
+                final horaAnt = _fmtHora(c.fechaHora);
+                MockData.liberarCupo(diaAnt, horaAnt);
+
+                // 2. Modificar fechaHora y bloquear nuevo cupo
+                c.fechaHora = DateTime.parse('$nuevoDia ${_to24(nuevaHora)}');
+                c.estado = 'Confirmada';
+                MockData.bloquearCupo(nuevoDia, nuevaHora);
+
+                // 3. Persistir actualización en SQLite (Update)
+                await DbHelper.instance.updateCita(c);
+
+                // 4. Notificación local si las notificaciones están activadas
+                try {
+                  final perfil = await DbHelper.instance.getPerfil();
+                  if (perfil.notificacionesActivas) {
+                    await NotificationService.instance.mostrarNotificacionCita(
+                      titulo: '¡Cita reprogramada con éxito!',
+                      especialidad: c.especialidad,
+                      profesional: c.profesional,
+                      sede: c.sede,
+                      fecha: nuevoDia,
+                      hora: nuevaHora,
+                    );
+                  }
+                } catch (notifErr) {
+                  debugPrint('Aviso al notificar reprogramación: $notifErr');
+                }
+
+                await _cargarCitasDesdeDb();
+
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Cita reprogramada correctamente en SQLite',
+                      ),
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      backgroundColor: Colors.red.shade700,
+                      content: Text('Error al reprogramar la cita: $e'),
+                    ),
+                  );
+                }
+              }
             },
             child: const Text('Confirmar'),
           ),

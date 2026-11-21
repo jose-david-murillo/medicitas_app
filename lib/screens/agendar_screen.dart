@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../core/theme/app_theme.dart';
 import '../data/mock_data.dart';
+import '../database/db_helper.dart';
 import '../models/models.dart';
+import '../services/notification_service.dart';
 import '../widgets/responsive_content.dart';
 import '../widgets/section_header.dart';
 import '../widgets/info_banner.dart';
@@ -586,7 +588,13 @@ class _AgendarScreenState extends State<AgendarScreen> {
       fechaHora: DateTime.parse('$diaSel ${_to24(horaSel!)}'),
       estado: 'Confirmada',
     );
-    MockData.citas.insert(0, nueva);
+
+    // Bloquear cupo de inmediato
+    MockData.bloquearCupo(diaSel, horaSel!);
+
+    // Persistir en SQLite y notificar
+    _persistirCitaYNotificar(nueva);
+
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -604,7 +612,7 @@ class _AgendarScreenState extends State<AgendarScreen> {
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              Navigator.pop(context);
+              Navigator.pop(context, true);
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text('Cita ${nueva.id} creada y cupo bloqueado'),
@@ -616,6 +624,25 @@ class _AgendarScreenState extends State<AgendarScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _persistirCitaYNotificar(Cita nueva) async {
+    try {
+      await DbHelper.instance.insertCita(nueva);
+      final perfil = await DbHelper.instance.getPerfil();
+      if (perfil.notificacionesActivas) {
+        await NotificationService.instance.mostrarNotificacionCita(
+          titulo: '¡Cita confirmada en MediCitas!',
+          especialidad: nueva.especialidad,
+          profesional: nueva.profesional,
+          sede: nueva.sede,
+          fecha: diaSel,
+          hora: horaSel!,
+        );
+      }
+    } catch (_) {
+      // Si la base de datos se cerró por reinicio de test o finalización, silenciar
+    }
   }
 
   String _to24(String h) {

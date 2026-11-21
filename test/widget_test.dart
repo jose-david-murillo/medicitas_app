@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:medicitas_app/database/db_helper.dart';
 import 'package:medicitas_app/main.dart';
 
 Future<void> _iniciarSesion(WidgetTester tester) async {
@@ -12,10 +13,16 @@ Future<void> _tocar(WidgetTester tester, Finder finder) async {
   await tester.ensureVisible(finder);
   await tester.pumpAndSettle();
   await tester.tap(finder);
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 100));
   await tester.pumpAndSettle();
 }
 
 void main() {
+  setUp(() async {
+    DbHelper.initFfiIfNeeded();
+    await DbHelper.instance.resetForTesting();
+  });
   testWidgets('El login valida campos vacíos', (tester) async {
     await tester.pumpWidget(const MediCitasApp());
     await tester.enterText(find.byType(TextFormField).at(0), '');

@@ -80,6 +80,17 @@ class MockData {
     ),
   ];
 
+  static PerfilPaciente perfilInicial = PerfilPaciente(
+    id: 1,
+    nombre: 'José David Murillo',
+    documento: 'CC 1017234567',
+    correo: 'jose.murillo@unad.edu.co',
+    telefono: '300 123 4567',
+    canal: 'Correo',
+    notificacionesActivas: true,
+    fotoRuta: null,
+  );
+
   static Map<String, List<Slot>> horariosPorDia = {
     '2026-11-02': [
       Slot('8:00 a. m.', true),
@@ -105,4 +116,32 @@ class MockData {
     ],
     '2026-11-06': [Slot('9:00 a. m.', true), Slot('11:30 a. m.', true)],
   };
+
+  /// Bloquea el cupo para el día y hora especificados
+  static void bloquearCupo(String dia, String hora) {
+    final slots = horariosPorDia[dia];
+    if (slots != null) {
+      for (int i = 0; i < slots.length; i++) {
+        if (slots[i].hora.trim().toLowerCase() ==
+            hora.trim().toLowerCase()) {
+          slots[i] = Slot(slots[i].hora, false);
+          break;
+        }
+      }
+    }
+  }
+
+  /// Libera el cupo para el día y hora especificados
+  static void liberarCupo(String dia, String hora) {
+    final slots = horariosPorDia[dia];
+    if (slots != null) {
+      for (int i = 0; i < slots.length; i++) {
+        if (slots[i].hora.trim().toLowerCase() ==
+            hora.trim().toLowerCase()) {
+          slots[i] = Slot(slots[i].hora, true);
+          break;
+        }
+      }
+    }
+  }
 }

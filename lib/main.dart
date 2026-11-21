@@ -1,8 +1,19 @@
 import 'package:flutter/material.dart';
 import 'core/theme/app_theme.dart';
+import 'database/db_helper.dart';
 import 'screens/login_screen.dart';
+import 'services/notification_service.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  DbHelper.initFfiIfNeeded();
+  try {
+    await DbHelper.instance.database;
+    await NotificationService.instance.init();
+  } catch (e) {
+    debugPrint('Error en inicialización previa de servicios: $e');
+  }
+
   runApp(const MediCitasApp());
 }
 
